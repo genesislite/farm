@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Developer/Play Mode</title>
+    <style>
+        body {
+            background-color: #ffffff;
+            margin: 0;
+            padding: 0;
+        }
+        #movableImage, #movableImage2 {
+            position: absolute;
+            display: none;
+            pointer-events: none;
+        }
+        .placed-image {
+            position: absolute;
+        }
+        #idleCharacter {
+            position: absolute;
+            display: none;
+            width: 55px;
+            height: 100px;
+            z-index: 3;
+            transform: scaleX(-1); /* Start facing left by default */
+        }
+        #gameArea {
+            position: relative;
+            overflow: hidden;
+            width: 100%;
+            height: 100vh;
+        }
+        #worldContainer {
+            position: absolute;
+            transform-origin: top left;
+        }
+        #movableImage2 {
+            z-index: 1;
+        }
+        #movableImage {
+            z-index: 2;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameArea">
+        <div id="worldContainer">
+            <img id="idleCharacter" src="/Users/toneanmorgan/Downloads/farmer.gif">
+            <img id="movableImage" src="/Users/toneanmorgan/Downloads/pixel_house_5.png" width="200" height="200">
+            <img id="movableImage2" src="/Users/toneanmorgan/Downloads/fixed_ground2.png" width="600" height="600">
+        </div>
+    </div>
+
+    <script>
+        const gameArea = document.getElementById('gameArea');
+        const worldContainer = document.getElementById('worldContainer');
+        const movableImage = document.getElementById('movableImage');
+        const movableImage2 = document.getElementById('movableImage2');
+        const idleCharacter = document.getElementById('idleCharacter');
+        
+        let isDeveloperMode = false;
+        let isImageActive = false;
+        let isImage2Active = false;
+        let placedImages = [];
+        
+        // Character movement variables
+        let idlePosition = { x: window.innerWidth / 2, y: window.innerHeight / 2 }; // Start in center of screen
+        let velocity = { x: 0, y: 0 };
+        let acceleration = 0.5;
+        let maxSpeed = 5;
+        let friction = 0.85;
+        let movementKeys = { w: false, a: false, s: false, d: false };
+        let cameraOffset = { x: 0, y: 0 };
+        let lastTime = 0;
+
+        function gameLoop(currentTime) {
+            if (lastTime === 0) {
+                lastTime = currentTime;
+            }
+            const deltaTime = (currentTime - lastTime) / 16.67;
+            lastTime = currentTime;
+
+            if (!isDeveloperMode) {
+                updateCharacterMovement(deltaTime);
+                updateCamera();
+                initializeCharacterPosition();
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function updateCharacterMovement(deltaTime) {
+            let accelX = 0;
+            let accelY = 0;
+
+            if (movementKeys.w) accelY -= acceleration;
+            if (movementKeys.s) accelY += acceleration;
+            if (movementKeys.a) accelX -= acceleration;
+            if (movementKeys.d) accelX += acceleration;
+
+            // Apply acceleration
+            velocity.x += accelX * deltaTime;
+            velocity.y += accelY * deltaTime;
+
+            // Apply friction
+            velocity.x *= friction;
+            velocity.y *= friction;
+
+            // Limit speed
+            const speed = Math.sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
+            if (speed > maxSpeed) {
+                velocity.x = (velocity.x / speed) * maxSpeed;
+                velocity.y = (velocity.y / speed) * maxSpeed;
+            }
+
+            // Update position
+            idlePosition.x += velocity.x * deltaTime;
+            idlePosition.y += velocity.y * deltaTime;
+
+            // Update character direction only when actually moving
+            if (Math.abs(velocity.x) > 0.1) {
+                if (velocity.x > 0) {
+                    idleCharacter.style.transform = 'scaleX(1)';
+                } else {
+                    idleCharacter.style.transform = 'scaleX(-1)';
+                }
+            }
+        }
+
+        const savePositions = () => {
+            localStorage.setItem('placedImages', JSON.stringify(placedImages));
+        };
+
+        const loadPositions = () => {
+            const saved = localStorage.getItem('placedImages');
+            if (saved) {
+                placedImages = JSON.parse(saved);
+                renderPlacedImages();
+            }
+        };
+
+        const renderPlacedImages = () => {
+            document.querySelectorAll('.placed-image').forEach(img => img.remove());
+            
+            placedImages.forEach(pos => {
+                const img = document.createElement('img');
+                img.src = pos.imageType === 2 ? movableImage2.src : movableImage.src;
+                img.className = 'placed-image';
+                img.style.left = pos.x + 'px';
+                img.style.top = pos.y + 'px';
+                
+                if (pos.imageType === 2) {
+                    img.style.width = '600px';
+                    img.style.height = '600px';
+                } else {
+                    img.style.width = '450px';
+                    img.style.height = '350px';
+                }
+                
+                worldContainer.appendChild(img);
+            });
+        };
+
+        const updateCamera = () => {
+            if (!isDeveloperMode) {
+                const gameAreaWidth = gameArea.clientWidth;
+                const gameAreaHeight = gameArea.clientHeight;
+                
+                // Initial camera position without smoothing
+                if (cameraOffset.x === 0 && cameraOffset.y === 0) {
+                    cameraOffset.x = -(idlePosition.x - gameAreaWidth / 2);
+                    cameraOffset.y = -(idlePosition.y - gameAreaHeight / 2);
+                } else {
+                    // Smooth camera follow during movement
+                    const targetX = -(idlePosition.x - gameAreaWidth / 2);
+                    const targetY = -(idlePosition.y - gameAreaHeight / 2);
+                    
+                    cameraOffset.x += (targetX - cameraOffset.x) * 0.1;
+                    cameraOffset.y += (targetY - cameraOffset.y) * 0.1;
+                }
+            } else {
+                cameraOffset.x = 0;
+                cameraOffset.y = 0;
+            }
+            
+            worldContainer.style.transform = `translate(${cameraOffset.x}px, ${cameraOffset.y}px)`;
+        };
+
+        const setDeveloperMode = (enabled) => {
+            isDeveloperMode = enabled;
+            if (isDeveloperMode) {
+                idleCharacter.style.display = 'none';
+                idleCharacter.style.visibility = 'hidden';
+                if (isImageActive) movableImage.style.display = 'block';
+                if (isImage2Active) movableImage2.style.display = 'block';
+            } else {
+                idleCharacter.style.visibility = 'visible';
+                idleCharacter.style.display = 'block';
+                movableImage.style.display = 'none';
+                movableImage2.style.display = 'none';
+                isImageActive = false;
+                isImage2Active = false;
+            }
+            updateCamera();
+        };
+
+        const initializeCharacterPosition = () => {
+            idleCharacter.style.left = idlePosition.x + 'px';
+            idleCharacter.style.top = idlePosition.y + 'px';
+        };
+
+        document.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+            if (['w', 'a', 's', 'd'].includes(key)) {
+                movementKeys[key] = true;
+            }
+
+            switch(key) {
+                case 'q':
+                    setDeveloperMode(!isDeveloperMode);
+                    break;
+                case '1':
+                    if (isDeveloperMode) {
+                        isImageActive = true;
+                        isImage2Active = false;
+                        movableImage.style.display = 'block';
+                        movableImage2.style.display = 'none';
+                    }
+                    break;
+                case '2':
+                    if (isDeveloperMode) {
+                        isImage2Active = true;
+                        isImageActive = false;
+                        movableImage2.style.display = 'block';
+                        movableImage.style.display = 'none';
+                    }
+                    break;
+                case 'p':
+                    if (isDeveloperMode && (isImageActive || isImage2Active)) {
+                        const activeImage = isImageActive ? movableImage : movableImage2;
+                        const rect = activeImage.getBoundingClientRect();
+                        const gameAreaRect = gameArea.getBoundingClientRect();
+                        
+                        placedImages.push({
+                            x: rect.left - gameAreaRect.left - cameraOffset.x,
+                            y: rect.top - gameAreaRect.top - cameraOffset.y,
+                            imageType: isImageActive ? 1 : 2
+                        });
+                        
+                        savePositions();
+                        renderPlacedImages();
+                    }
+                    break;
+                case 'r':
+                    if (isDeveloperMode) {
+                        placedImages.pop();
+                        savePositions();
+                        renderPlacedImages();
+                    }
+                    break;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            const key = e.key.toLowerCase();
+            if (['w', 'a', 's', 'd'].includes(key)) {
+                movementKeys[key] = false;
+            }
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (isDeveloperMode && (isImageActive || isImage2Active)) {
+                const activeImage = isImageActive ? movableImage : movableImage2;
+                const rect = gameArea.getBoundingClientRect();
+                activeImage.style.left = (e.clientX - rect.left - cameraOffset.x - 25) + 'px';
+                activeImage.style.top = (e.clientY - rect.top - cameraOffset.y - 25) + 'px';
+            }
+        });
+
+        // Start in play mode
+        setDeveloperMode(false);
+        initializeCharacterPosition();
+        loadPositions();
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
